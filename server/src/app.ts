@@ -81,7 +81,7 @@ app.use('/api/couriers', couriersRouter);
 app.use('/api/pod', podRouter);
 
 // Serve built client in local production mode
-const clientDist = path.resolve('../client/dist');
+const clientDist = path.resolve('../dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
   app.get('/{*path}', (_req, res) => {
