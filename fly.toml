@@ -1,0 +1,22 @@
+app = "REPLACE-WITH-YOUR-APP-NAME"
+primary_region = "jnb"
+
+[build]
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  DATABASE_PATH = "/data/db.sqlite"
+  UPLOADS_DIR = "/data/uploads"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "delivery_data"
+  destination = "/data"
+  initial_size = "3gb"
