@@ -330,7 +330,7 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
   return (
     <div className="dashboard">
       <nav className="nav">
-        <div className="nav-brand"><span>🚚</span><span>DeliveryTrack</span></div>
+        <div className="nav-brand"><img src="/logo.jpeg" alt="Logo" className="nav-logo" /></div>
         <div className="nav-actions">
           <button
             className="notif-bell"

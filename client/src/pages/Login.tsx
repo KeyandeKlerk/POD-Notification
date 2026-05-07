@@ -46,8 +46,7 @@ export default function Login({ onLogin }: Props) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <span className="login-icon">🚚</span>
-          <h1>DeliveryTrack</h1>
+          <img src="/logo.jpeg" alt="Logo" className="login-logo-img" />
           <p>Sign in to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="login-form">

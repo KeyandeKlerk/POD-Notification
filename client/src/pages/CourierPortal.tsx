@@ -57,7 +57,7 @@ export default function CourierPortal({ courierName, onLogout }: Props) {
       <header className="courier-header">
         <div className="courier-header-inner">
           <div>
-            <span className="courier-brand">DeliveryTrack</span>
+            <span className="courier-brand"><img src="/logo.jpeg" alt="Logo" className="nav-logo" /></span>
             <p className="courier-greeting">Hi, {courierName}</p>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onLogout}>Sign out</button>
