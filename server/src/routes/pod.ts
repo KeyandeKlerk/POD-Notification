@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { supabase } from '../lib/supabase.js';
 import { requireCourier } from '../middleware.js';
+import { sendPodNotification } from '../lib/email.js';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/deliveries', requireCourier, async (req, res) => {
 
 router.post('/:id/confirm', requireCourier, upload.array('photos', 20), async (req, res) => {
   const { data: parcel, error: fetchErr } = await supabase
-    .from('parcels').select('id, status, customer_name').eq('id', req.params['id']).single();
+    .from('parcels').select('id, status, customer_name, notify_emails').eq('id', req.params['id']).single();
   if (fetchErr || !parcel) { res.status(404).json({ error: 'Delivery not found' }); return; }
   if (parcel.status !== 'pending') { res.status(400).json({ error: 'Delivery already confirmed' }); return; }
 
@@ -66,6 +67,10 @@ router.post('/:id/confirm', requireCourier, upload.array('photos', 20), async (r
       photoUrls.map(url => ({ parcel_id: parcel.id, photo_path: url }))
     );
   }
+
+  const notifyEmails: string[] = Array.isArray(parcel.notify_emails) ? parcel.notify_emails : [];
+  sendPodNotification(parcel.id, parcel.customer_name, deliveredAt, photoUrls, notifyEmails)
+    .catch(err => console.error('[email] Failed to send POD notification:', err));
 
   res.json({ ok: true });
 });

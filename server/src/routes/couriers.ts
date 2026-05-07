@@ -43,4 +43,22 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
   res.json({ active: !!newActive });
 });
 
+router.delete('/:id', requireAdmin, async (req, res) => {
+  const { data: pending, error: checkErr } = await supabase
+    .from('parcels')
+    .select('id')
+    .eq('assigned_courier_id', req.params['id'])
+    .eq('status', 'pending')
+    .limit(1);
+  if (checkErr) { res.status(500).json({ error: checkErr.message }); return; }
+  if (pending && pending.length > 0) {
+    res.status(409).json({ error: 'Courier has pending deliveries — reassign them first' });
+    return;
+  }
+
+  const { error } = await supabase.from('couriers').delete().eq('id', req.params['id']);
+  if (error) { res.status(500).json({ error: error.message }); return; }
+  res.json({ ok: true });
+});
+
 export default router;

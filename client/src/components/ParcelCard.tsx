@@ -15,6 +15,7 @@ export interface Parcel {
   delivered_at?: string;
   driver_notes?: string;
   photos: string[];
+  notify_emails?: string[];
 }
 
 interface Courier {
@@ -27,6 +28,8 @@ interface Props {
   parcel: Parcel;
   highlighted: boolean;
   onMarkPaid: (id: string) => void;
+  onEdit?: (parcel: Parcel) => void;
+  onDelete?: (id: string) => void;
   couriers?: Courier[];
 }
 
@@ -36,8 +39,9 @@ const STATUS_LABELS: Record<string, string> = {
   paid: 'Paid',
 };
 
-export default function ParcelCard({ parcel, highlighted, onMarkPaid, couriers = [] }: Props) {
+export default function ParcelCard({ parcel, highlighted, onMarkPaid, onEdit, onDelete, couriers = [] }: Props) {
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -60,7 +64,48 @@ export default function ParcelCard({ parcel, highlighted, onMarkPaid, couriers =
               <span className="pieces-tag">{parcel.pieces} pieces</span>
             )}
           </div>
-          <span className="parcel-date">{fmt(parcel.created_at)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="parcel-date">{fmt(parcel.created_at)}</span>
+            {parcel.status === 'pending' && onEdit && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => onEdit(parcel)}
+                title="Edit delivery"
+                style={{ padding: '2px 8px', fontSize: 13 }}
+              >
+                Edit
+              </button>
+            )}
+            {parcel.status === 'pending' && onDelete && !confirmDelete && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmDelete(true)}
+                title="Delete delivery"
+                style={{ padding: '2px 8px', fontSize: 13, color: '#dc2626' }}
+              >
+                Delete
+              </button>
+            )}
+            {confirmDelete && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <span style={{ color: '#dc2626' }}>Delete?</span>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: '#dc2626', color: '#fff', padding: '2px 8px' }}
+                  onClick={() => { onDelete?.(parcel.id); setConfirmDelete(false); }}
+                >
+                  Yes
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '2px 8px' }}
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  No
+                </button>
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="parcel-body">

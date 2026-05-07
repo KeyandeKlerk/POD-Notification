@@ -27,13 +27,9 @@ interface Props {
 interface NewDeliveryForm {
   id: string;
   customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  address: string;
-  description: string;
   pieces: string;
-  amount: string;
   assigned_courier_id: string;
+  notify_emails: string[];
 }
 
 interface NewCourierForm {
@@ -42,9 +38,15 @@ interface NewCourierForm {
   password: string;
 }
 
+interface EditDeliveryForm {
+  customer_name: string;
+  pieces: string;
+  assigned_courier_id: string;
+  notify_emails: string[];
+}
+
 const EMPTY_DELIVERY: NewDeliveryForm = {
-  id: '', customer_name: '', customer_email: '', customer_phone: '',
-  address: '', description: '', pieces: '1', amount: '', assigned_courier_id: '',
+  id: '', customer_name: '', pieces: '1', assigned_courier_id: '', notify_emails: [],
 };
 const EMPTY_COURIER: NewCourierForm = { name: '', username: '', password: '' };
 
@@ -64,6 +66,52 @@ function buildChartData(parcels: Parcel[]) {
   return Object.entries(counts).map(([date, deliveries]) => ({ date, deliveries }));
 }
 
+function NotifyEmailsInput({
+  emails,
+  onChange,
+}: {
+  emails: string[];
+  onChange: (emails: string[]) => void;
+}) {
+  const update = (i: number, val: string) => {
+    const next = [...emails];
+    next[i] = val;
+    onChange(next);
+  };
+  const add = () => { if (emails.length < 3) onChange([...emails, '']); };
+  const remove = (i: number) => onChange(emails.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="field">
+      <label>Notify emails <span className="optional">(up to 3)</span></label>
+      {emails.map((email, i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+          <input
+            type="email"
+            value={email}
+            onChange={e => update(i, e.target.value)}
+            placeholder="recipient@example.com"
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => remove(i)}
+            style={{ padding: '4px 10px' }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      {emails.length < 3 && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={add} style={{ marginTop: 2 }}>
+          + Add email
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard({ notifications, onNewNotification, onMarkAllRead, onDismissNotification, onLogout }: Props) {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [couriers, setCouriers] = useState<Courier[]>([]);
@@ -71,14 +119,27 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+
+  // Create delivery
   const [createDeliveryOpen, setCreateDeliveryOpen] = useState(false);
-  const [createCourierOpen, setCreateCourierOpen] = useState(false);
   const [deliveryForm, setDeliveryForm] = useState<NewDeliveryForm>(EMPTY_DELIVERY);
-  const [courierForm, setCourierForm] = useState<NewCourierForm>(EMPTY_COURIER);
   const [creatingDelivery, setCreatingDelivery] = useState(false);
-  const [creatingCourier, setCreatingCourier] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
+
+  // Edit delivery
+  const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [editForm, setEditForm] = useState<EditDeliveryForm>({ customer_name: '', pieces: '1', assigned_courier_id: '', notify_emails: [] });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Couriers
+  const [createCourierOpen, setCreateCourierOpen] = useState(false);
+  const [courierForm, setCourierForm] = useState<NewCourierForm>(EMPTY_COURIER);
+  const [creatingCourier, setCreatingCourier] = useState(false);
   const [courierError, setCourierError] = useState('');
+  const [deletingCourierId, setDeletingCourierId] = useState<number | null>(null);
+  const [courierDeleteError, setCourierDeleteError] = useState<Record<number, string>>({});
+
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -101,7 +162,6 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
     fetchCouriers();
   }, [fetchParcels, fetchCouriers]);
 
-  // Supabase Realtime — fires when any parcel transitions to 'delivered'
   useEffect(() => {
     const channel = supabase
       .channel('admin-deliveries')
@@ -141,10 +201,11 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          ...deliveryForm,
+          id: deliveryForm.id,
+          customer_name: deliveryForm.customer_name,
           pieces: deliveryForm.pieces ? parseInt(deliveryForm.pieces, 10) : 1,
-          amount: deliveryForm.amount ? parseFloat(deliveryForm.amount) : undefined,
           assigned_courier_id: deliveryForm.assigned_courier_id || undefined,
+          notify_emails: deliveryForm.notify_emails.filter(Boolean),
         }),
       });
       if (res.ok) {
@@ -160,6 +221,53 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
     } finally {
       setCreatingDelivery(false);
     }
+  };
+
+  const handleOpenEdit = (parcel: Parcel) => {
+    setEditingParcel(parcel);
+    setEditForm({
+      customer_name: parcel.customer_name,
+      pieces: String(parcel.pieces),
+      assigned_courier_id: parcel.assigned_courier_id ? String(parcel.assigned_courier_id) : '',
+      notify_emails: parcel.notify_emails?.length ? [...parcel.notify_emails] : [],
+    });
+    setEditError('');
+  };
+
+  const handleSaveEdit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingParcel) return;
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      const res = await fetch(`/api/parcels/${editingParcel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          customer_name: editForm.customer_name,
+          pieces: editForm.pieces ? parseInt(editForm.pieces, 10) : 1,
+          assigned_courier_id: editForm.assigned_courier_id || null,
+          notify_emails: editForm.notify_emails.filter(Boolean),
+        }),
+      });
+      if (res.ok) {
+        setEditingParcel(null);
+        fetchParcels();
+      } else {
+        const data = await res.json();
+        setEditError(data.error ?? 'Failed to save changes');
+      }
+    } catch {
+      setEditError('Network error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteParcel = async (id: string) => {
+    await fetch(`/api/parcels/${id}`, { method: 'DELETE', credentials: 'include' });
+    fetchParcels();
   };
 
   const handleCreateCourier = async (e: FormEvent) => {
@@ -191,6 +299,18 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
   const handleToggleCourierActive = async (courier: Courier) => {
     await fetch(`/api/couriers/${courier.id}/active`, { method: 'PATCH', credentials: 'include' });
     fetchCouriers();
+  };
+
+  const handleDeleteCourier = async (courier: Courier) => {
+    const res = await fetch(`/api/couriers/${courier.id}`, { method: 'DELETE', credentials: 'include' });
+    if (res.ok) {
+      setDeletingCourierId(null);
+      fetchCouriers();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setCourierDeleteError(prev => ({ ...prev, [courier.id]: data.error ?? 'Failed to delete courier' }));
+      setDeletingCourierId(null);
+    }
   };
 
   const handleNotifClick = (parcelId: string) => {
@@ -277,7 +397,15 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
             ) : (
               <div className="parcel-list">
                 {filtered.map(parcel => (
-                  <ParcelCard key={parcel.id} parcel={parcel} highlighted={highlightedId === parcel.id} onMarkPaid={handleMarkPaid} couriers={couriers} />
+                  <ParcelCard
+                    key={parcel.id}
+                    parcel={parcel}
+                    highlighted={highlightedId === parcel.id}
+                    onMarkPaid={handleMarkPaid}
+                    onEdit={handleOpenEdit}
+                    onDelete={handleDeleteParcel}
+                    couriers={couriers}
+                  />
                 ))}
               </div>
             )}
@@ -304,7 +432,37 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
                       <button className="btn btn-secondary btn-sm" onClick={() => handleToggleCourierActive(c)}>
                         {c.active ? 'Deactivate' : 'Reactivate'}
                       </button>
+                      {deletingCourierId === c.id ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                          <span style={{ color: '#dc2626' }}>Remove?</span>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: '#dc2626', color: '#fff', padding: '2px 8px' }}
+                            onClick={() => handleDeleteCourier(c)}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '2px 8px' }}
+                            onClick={() => setDeletingCourierId(null)}
+                          >
+                            No
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: '#dc2626', padding: '4px 10px' }}
+                          onClick={() => { setDeletingCourierId(c.id); setCourierDeleteError(prev => ({ ...prev, [c.id]: '' })); }}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
+                    {courierDeleteError[c.id] && (
+                      <p className="error-msg" style={{ marginTop: 4, flexBasis: '100%' }}>{courierDeleteError[c.id]}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -313,6 +471,7 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
         )}
       </main>
 
+      {/* Create delivery modal */}
       {createDeliveryOpen && (
         <div className="modal-overlay" onClick={() => setCreateDeliveryOpen(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -329,51 +488,85 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
                 <label>Customer name <span className="required">*</span></label>
                 <input value={deliveryForm.customer_name} onChange={e => setDeliveryForm(f => ({ ...f, customer_name: e.target.value }))} required />
               </div>
-              <div className="field-row">
-                <div className="field">
-                  <label>Email</label>
-                  <input type="email" value={deliveryForm.customer_email} onChange={e => setDeliveryForm(f => ({ ...f, customer_email: e.target.value }))} />
-                </div>
-                <div className="field">
-                  <label>Phone</label>
-                  <input type="tel" value={deliveryForm.customer_phone} onChange={e => setDeliveryForm(f => ({ ...f, customer_phone: e.target.value }))} />
-                </div>
+              <div className="field">
+                <label>Pieces</label>
+                <input type="number" min="1" value={deliveryForm.pieces} onChange={e => setDeliveryForm(f => ({ ...f, pieces: e.target.value }))} />
               </div>
               <div className="field">
-                <label>Delivery address</label>
-                <input value={deliveryForm.address} onChange={e => setDeliveryForm(f => ({ ...f, address: e.target.value }))} placeholder="Street, City, Province" />
-              </div>
-              <div className="field">
-                <label>Description</label>
-                <input value={deliveryForm.description} onChange={e => setDeliveryForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. 3-piece lounge suite + coffee table" />
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label>Pieces</label>
-                  <input type="number" min="1" value={deliveryForm.pieces} onChange={e => setDeliveryForm(f => ({ ...f, pieces: e.target.value }))} />
-                </div>
-                <div className="field">
-                  <label>Amount due (R)</label>
-                  <input type="number" min="0" step="0.01" value={deliveryForm.amount} onChange={e => setDeliveryForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
-                </div>
-              </div>
-              <div className="field">
-                <label>Assign to courier</label>
-                <select value={deliveryForm.assigned_courier_id} onChange={e => setDeliveryForm(f => ({ ...f, assigned_courier_id: e.target.value }))}>
-                  <option value="">Unassigned</option>
+                <label>Assign to courier <span className="required">*</span></label>
+                <select
+                  value={deliveryForm.assigned_courier_id}
+                  onChange={e => setDeliveryForm(f => ({ ...f, assigned_courier_id: e.target.value }))}
+                  required
+                >
+                  <option value="">— Select a courier —</option>
                   {couriers.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                {!deliveryForm.assigned_courier_id && (
+                  <p style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>A courier must be assigned before creating a delivery.</p>
+                )}
               </div>
+              <NotifyEmailsInput
+                emails={deliveryForm.notify_emails}
+                onChange={emails => setDeliveryForm(f => ({ ...f, notify_emails: emails }))}
+              />
               {deliveryError && <p className="error-msg">{deliveryError}</p>}
               <div className="modal-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setCreateDeliveryOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={creatingDelivery}>{creatingDelivery ? 'Creating…' : 'Create Delivery'}</button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={creatingDelivery || !deliveryForm.assigned_courier_id}
+                >
+                  {creatingDelivery ? 'Creating…' : 'Create Delivery'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* Edit delivery modal */}
+      {editingParcel && (
+        <div className="modal-overlay" onClick={() => setEditingParcel(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Edit Delivery — {editingParcel.id}</h3>
+              <button className="modal-close" onClick={() => setEditingParcel(null)}>×</button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="modal-form">
+              <div className="field">
+                <label>Customer name <span className="required">*</span></label>
+                <input value={editForm.customer_name} onChange={e => setEditForm(f => ({ ...f, customer_name: e.target.value }))} required />
+              </div>
+              <div className="field">
+                <label>Pieces</label>
+                <input type="number" min="1" value={editForm.pieces} onChange={e => setEditForm(f => ({ ...f, pieces: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label>Assign to courier</label>
+                <select value={editForm.assigned_courier_id} onChange={e => setEditForm(f => ({ ...f, assigned_courier_id: e.target.value }))}>
+                  <option value="">Unassigned</option>
+                  {couriers.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <NotifyEmailsInput
+                emails={editForm.notify_emails}
+                onChange={emails => setEditForm(f => ({ ...f, notify_emails: emails }))}
+              />
+              {editError && <p className="error-msg">{editError}</p>}
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setEditingParcel(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+                  {savingEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add courier modal */}
       {createCourierOpen && (
         <div className="modal-overlay" onClick={() => setCreateCourierOpen(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>

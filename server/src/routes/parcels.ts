@@ -12,6 +12,13 @@ function withPhotos(p: any) {
   };
 }
 
+function sanitizeEmails(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e: unknown) => (typeof e === 'string' ? e.trim() : ''))
+    .filter(Boolean);
+}
+
 router.get('/', requireAdmin, async (req, res) => {
   const { status } = req.query;
   let query = supabase.from('parcels').select('*, pod_photos(photo_path)');
@@ -22,7 +29,7 @@ router.get('/', requireAdmin, async (req, res) => {
 });
 
 router.post('/', requireAdmin, async (req, res) => {
-  const { id, customer_name, customer_email, customer_phone, address, description, pieces, amount, assigned_courier_id } = req.body;
+  const { id, customer_name, assigned_courier_id, pieces, notify_emails } = req.body;
   if (!id || !customer_name) {
     res.status(400).json({ error: 'Invoice number and customer name are required' });
     return;
@@ -32,13 +39,9 @@ router.post('/', requireAdmin, async (req, res) => {
     .insert({
       id,
       customer_name,
-      customer_email: customer_email || null,
-      customer_phone: customer_phone || null,
-      address: address || null,
-      description: description || null,
       pieces: pieces ? parseInt(pieces, 10) : 1,
-      amount: amount ? parseFloat(amount) : null,
       assigned_courier_id: assigned_courier_id ? parseInt(assigned_courier_id, 10) : null,
+      notify_emails: sanitizeEmails(notify_emails),
     })
     .select()
     .single();
@@ -68,6 +71,46 @@ router.patch('/:id/status', requireAdmin, async (req, res) => {
     res.status(400).json({ error: 'Invalid status' }); return;
   }
   const { error } = await supabase.from('parcels').update({ status }).eq('id', req.params['id']);
+  if (error) { res.status(500).json({ error: error.message }); return; }
+  res.json({ ok: true });
+});
+
+router.patch('/:id', requireAdmin, async (req, res) => {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('parcels').select('status').eq('id', req.params['id']).single();
+  if (fetchErr || !existing) { res.status(404).json({ error: 'Not found' }); return; }
+  if (existing.status !== 'pending') {
+    res.status(409).json({ error: 'Only pending deliveries can be edited' }); return;
+  }
+
+  const { customer_name, pieces, assigned_courier_id, notify_emails } = req.body;
+  const updates: Record<string, unknown> = {};
+  if (customer_name !== undefined) updates['customer_name'] = customer_name;
+  if (pieces !== undefined) updates['pieces'] = parseInt(pieces, 10);
+  if (assigned_courier_id !== undefined) {
+    updates['assigned_courier_id'] = assigned_courier_id ? parseInt(assigned_courier_id, 10) : null;
+  }
+  if (notify_emails !== undefined) updates['notify_emails'] = sanitizeEmails(notify_emails);
+
+  const { data, error } = await supabase
+    .from('parcels')
+    .update(updates)
+    .eq('id', req.params['id'])
+    .select('*, pod_photos(photo_path)')
+    .single();
+  if (error) { res.status(500).json({ error: error.message }); return; }
+  res.json(withPhotos(data));
+});
+
+router.delete('/:id', requireAdmin, async (req, res) => {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('parcels').select('status').eq('id', req.params['id']).single();
+  if (fetchErr || !existing) { res.status(404).json({ error: 'Not found' }); return; }
+  if (existing.status !== 'pending') {
+    res.status(409).json({ error: 'Only pending deliveries can be deleted' }); return;
+  }
+
+  const { error } = await supabase.from('parcels').delete().eq('id', req.params['id']);
   if (error) { res.status(500).json({ error: error.message }); return; }
   res.json({ ok: true });
 });
