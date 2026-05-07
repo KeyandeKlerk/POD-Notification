@@ -31,10 +31,11 @@ router.get('/deliveries', requireCourier, async (req, res) => {
 });
 
 router.post('/:id/confirm', requireCourier, upload.array('photos', 20), async (req, res) => {
+  console.log(`[pod] confirm called for parcel ${req.params['id']}`);
   const { data: parcel, error: fetchErr } = await supabase
     .from('parcels').select('id, status, customer_name, notify_emails').eq('id', req.params['id']).single();
-  if (fetchErr || !parcel) { res.status(404).json({ error: 'Delivery not found' }); return; }
-  if (parcel.status !== 'pending') { res.status(400).json({ error: 'Delivery already confirmed' }); return; }
+  if (fetchErr || !parcel) { console.log(`[pod] parcel not found: ${req.params['id']}`, fetchErr); res.status(404).json({ error: 'Delivery not found' }); return; }
+  if (parcel.status !== 'pending') { console.log(`[pod] parcel ${parcel.id} already confirmed (status: ${parcel.status})`); res.status(400).json({ error: 'Delivery already confirmed' }); return; }
 
   const files = req.files as Express.Multer.File[];
   if (!files || files.length === 0) {
