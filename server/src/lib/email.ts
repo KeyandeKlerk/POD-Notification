@@ -16,7 +16,10 @@ export async function sendPodNotification(
     console.warn('[email] SENDGRID_API_KEY or SENDGRID_FROM_EMAIL not set — skipping email');
     return;
   }
-  if (notifyEmails.length === 0) return;
+  if (notifyEmails.length === 0) {
+    console.log('[email] No notify_emails on parcel — skipping');
+    return;
+  }
 
   const time = new Date(deliveredAt).toLocaleString('en-ZA', {
     dateStyle: 'medium',
@@ -36,6 +39,7 @@ export async function sendPodNotification(
   <div style="margin-top:16px">${photosHtml}</div>
 </div>`;
 
+  console.log(`[email] Sending POD notification for ${parcelId} to:`, notifyEmails);
   await sgMail.sendMultiple({
     to: notifyEmails,
     from: fromEmail,
