@@ -39,7 +39,8 @@ router.patch('/:id/active', requireAdmin, async (req, res) => {
     .from('couriers').select('active').eq('id', req.params['id']).single();
   if (fetchErr || !courier) { res.status(404).json({ error: 'Not found' }); return; }
   const newActive = courier.active ? 0 : 1;
-  await supabase.from('couriers').update({ active: newActive }).eq('id', req.params['id']);
+  const { error: updateErr } = await supabase.from('couriers').update({ active: newActive }).eq('id', req.params['id']);
+  if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
   res.json({ active: !!newActive });
 });
 

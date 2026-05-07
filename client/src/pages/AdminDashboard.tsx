@@ -183,7 +183,7 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
   }, [onNewNotification, fetchParcels]);
 
   const handleMarkPaid = async (id: string) => {
-    await fetch(`/api/parcels/${id}/status`, {
+    await fetch(`/api/parcels/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -241,7 +241,7 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
     setSavingEdit(true);
     setEditError('');
     try {
-      const res = await fetch(`/api/parcels/${editingParcel.id}`, {
+      const res = await fetch(`/api/parcels/${encodeURIComponent(editingParcel.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -267,7 +267,11 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
   };
 
   const handleDeleteParcel = async (id: string) => {
-    await fetch(`/api/parcels/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await fetch(`/api/parcels/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? 'Failed to delete delivery');
+    }
     fetchParcels();
   };
 

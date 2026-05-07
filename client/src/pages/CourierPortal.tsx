@@ -142,7 +142,7 @@ function DeliveryDetail({ delivery, onBack }: { delivery: Delivery; onBack: () =
     photos.forEach(p => form.append('photos', p));
     form.append('notes', notes);
     try {
-      const res = await fetch(`/api/pod/${delivery.id}/confirm`, {
+      const res = await fetch(`/api/pod/${encodeURIComponent(delivery.id)}/confirm`, {
         method: 'POST',
         credentials: 'include',
         body: form,
