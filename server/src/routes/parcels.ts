@@ -80,7 +80,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     .from('parcels').select('status').eq('id', req.params['id']).single();
   if (fetchErr || !existing) { res.status(404).json({ error: 'Not found' }); return; }
   if (existing.status !== 'pending') {
-    res.status(409).json({ error: 'Only pending deliveries can be edited' }); return;
+    res.status(409).json({ error: 'This delivery has already been confirmed and can no longer be edited' }); return;
   }
 
   const { customer_name, pieces, assigned_courier_id, notify_emails } = req.body;

@@ -172,6 +172,7 @@ export default function AdminDashboard({ notifications, onNewNotification, onMar
             customerName: payload.new.customer_name,
             deliveredAt: payload.new.delivered_at,
           });
+          setEditingParcel(prev => (prev?.id === payload.new.id ? null : prev));
         }
         fetchParcels();
       })
